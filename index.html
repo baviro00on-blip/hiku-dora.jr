@@ -1241,10 +1241,12 @@
             const levelInfo = LEVELS_INFO.find(l => l.level === level) || LEVELS_INFO[0];
             const rewardCount = levelInfo.rewardCount;
             const drawnCards = [];
+            const drawnIds = new Set();
 
             for (let i = 0; i < rewardCount; i++) {
-                const card = drawPokemonCardForLevel(level);
+                const card = drawPokemonCardForLevel(level, drawnIds);
                 if (card) {
+                    drawnIds.add(card.id);
                     drawnCards.push(card);
                     if (!gameState.ownedCards.includes(card.id)) {
                         gameState.ownedCards.push(card.id);
@@ -1328,14 +1330,26 @@
         }
 
         // --- ドロップ上限＆確率判定ロジック ---
-        function drawPokemonCardForLevel(level) {
+        function drawPokemonCardForLevel(level, excludedIds = new Set()) {
             const globalLimit = getGlobalCardLimit(); // 20, 40, or 60
             const levelInfo = LEVELS_INFO.find(l => l.level === level) || LEVELS_INFO[0];
             const levelCap = levelInfo.maxPool; // レベル1:20, レベル2:30, レベル3:40, レベル4:50, レベル5:60
 
-            // 現在の全体開放段階とレベル上限の小さい方を上限とする
+            // 現在の全体開放段階とレベル上限の小さい方を上限とする（解放前のカードは出現しない）
             const effectiveLimit = Math.min(globalLimit, levelCap);
             const candidatePool = POKEMON_CARDS.slice(0, effectiveLimit);
+
+            // 1. まだ持っていない＆今回のステージでまだ引いていないカードを優先（かぶりなし）
+            const unownedPool = candidatePool.filter(c => !gameState.ownedCards.includes(c.id) && !excludedIds.has(c.id));
+            if (unownedPool.length > 0) {
+                return pickWeightedCard(unownedPool, level);
+            }
+
+            // 2. 今回のステージでまだ引いていないカード（同一クリア内でのかぶり防止）
+            const notDrawnYetPool = candidatePool.filter(c => !excludedIds.has(c.id));
+            if (notDrawnYetPool.length > 0) {
+                return pickWeightedCard(notDrawnYetPool, level);
+            }
 
             return pickWeightedCard(candidatePool, level);
         }
